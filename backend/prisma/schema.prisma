@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  DOCTOR
+  PHARMACIST
+  ADMIN
+  CNSS
+  SUPER_ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PrescriptionStatus {
+  CREATED
+  SENT_TO_PHARMACY
+  DISPENSED
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  role           UserRole
+  organizationId String?
+  createdAt      DateTime  @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  encounters     Encounter[]
+  prescriptions  Prescription[] @relation("DoctorPrescriptions")
+  dispenses      Dispense[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Organization {
+  id                 String              @id @default(uuid())
+  legalName          String              @map("legal_name")
+  tradeName          String              @map("trade_name")
+  rcNumber           String              @map("rc_number")
+  ifNumber           String              @map("if_number")
+  ice                String?
+  legalForm          String              @map("legal_form")
+  verificationStatus VerificationStatus  @default(PENDING) @map("verification_status")
+  facilities         Facility[]
+  users              User[]
+
+  @@map("organizations")
+}
+
+model Facility {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  regionCode     String       @map("region_code")
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("facilities")
+}
+
+model Patient {
+  id          String    @id @default(uuid())
+  nationalId  String    @unique @map("national_id")
+  cnssNumber  String?   @map("cnss_number")
+  firstName   String    @map("first_name")
+  lastName    String    @map("last_name")
+  dateOfBirth DateTime  @map("date_of_birth")
+  gender      String
+  encounters  Encounter[]
+  prescriptions Prescription[]
+
+  @@map("patients")
+}
+
+model Encounter {
+  id        String   @id @default(uuid())
+  patientId String
+  doctorId  String
+  notes     String
+  createdAt DateTime @default(now())
+  patient   Patient  @relation(fields: [patientId], references: [id])
+  doctor    User     @relation(fields: [doctorId], references: [id])
+  prescriptions Prescription[]
+
+  @@map("encounters")
+}
+
+model Prescription {
+  id          String              @id @default(uuid())
+  encounterId String
+  doctorId    String
+  patientId   String
+  status      PrescriptionStatus @default(CREATED)
+  qrTokenHash String?             @map("qr_token_hash")
+  qrExpiresAt DateTime?           @map("qr_expires_at")
+  encounter   Encounter           @relation(fields: [encounterId], references: [id])
+  doctor      User                @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+  patient     Patient             @relation(fields: [patientId], references: [id])
+  items       PrescriptionItem[]
+  dispense    Dispense?
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id                   String   @id @default(uuid())
+  prescriptionId       String
+  medicationName       String   @map("medication_name")
+  dose                 String
+  durationDays         Int      @map("duration_days")
+  substitutionAllowed  Boolean  @default(false) @map("substitution_allowed")
+  prescription         Prescription @relation(fields: [prescriptionId], references: [id])
+
+  @@map("prescription_items")
+}
+
+model Dispense {
+  id             String   @id @default(uuid())
+  prescriptionId String   @unique
+  pharmacistId   String
+  dispensedAt    DateTime @default(now())
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+  pharmacist     User     @relation(fields: [pharmacistId], references: [id])
+  claim          Claim?
+
+  @@map("dispenses")
+}
+
+model Claim {
+  id          String     @id @default(uuid())
+  dispenseId  String     @unique
+  status      ClaimStatus @default(DRAFT)
+  dispense    Dispense   @relation(fields: [dispenseId], references: [id])
+
+  @@map("claims")
+}
+
+model Region {
+  code   String @id
+  nameAr String @map("name_ar")
+  nameFr String @map("name_fr")
+
+  @@map("regions")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String
+  timestamp DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
